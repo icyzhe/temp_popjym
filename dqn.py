@@ -39,18 +39,22 @@ class QNetwork(nn.Module):
         # x = self.resnet(x)
         # Convolutional layers
         x = nn.Conv(features=32, kernel_size=(3, 3), strides=(1, 1))(x)
+        x = nn.LayerNorm()(x)
         x = nn.relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
         x = nn.Conv(features=64, kernel_size=(3, 3), strides=(1, 1))(x)
+        x = nn.LayerNorm()(x)
         x = nn.relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
         x = nn.Conv(features=128, kernel_size=(3, 3), strides=(1, 1))(x)
+        x = nn.LayerNorm()(x)
         x = nn.relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
         x = nn.Conv(features=256, kernel_size=(3, 3), strides=(1, 1))(x)
+        x = nn.LayerNorm()(x)
         x = nn.relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
@@ -105,12 +109,13 @@ def make_train(config):
         
 
         # INIT BUFFER
-        buffer = fbx.make_flat_buffer(
+        buffer = fbx.make_prioritised_flat_buffer(
             max_length=config["BUFFER_SIZE"],
             min_length=config["BUFFER_BATCH_SIZE"],
             sample_batch_size=config["BUFFER_BATCH_SIZE"],
             add_sequences=False,
             add_batch_size=config["NUM_ENVS"],
+            priority_exponent=0.6,
         )
         buffer = buffer.replace(
             init=jax.jit(buffer.init),
@@ -319,16 +324,16 @@ def make_train(config):
 def main():
 
     config = {
-        "NUM_ENVS": 10,
+        "NUM_ENVS": 12,
         "BUFFER_SIZE": 10000,
-        "BUFFER_BATCH_SIZE": 256,
+        "BUFFER_BATCH_SIZE": 128,
         "TOTAL_TIMESTEPS": 1e6,
         "EPSILON_START": 1.0,
         "EPSILON_FINISH": 0.05,
         "EPSILON_ANNEAL_TIME": 25e4,
         "TARGET_UPDATE_INTERVAL": 500,
-        "LR": 1e-5,
-        "LEARNING_STARTS": 100000,
+        "LR": 2.5e-4,
+        "LEARNING_STARTS": 10000,
         "TRAINING_INTERVAL": 10,
         "LR_LINEAR_DECAY": False,
         "GAMMA": 0.99,
