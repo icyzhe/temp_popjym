@@ -33,29 +33,29 @@ class QNetwork(nn.Module):
     
     @nn.compact
     def __call__(self, x: jnp.ndarray):
-        if x.ndim == 3:
-            x = jnp.expand_dims(x, axis=0)
+        # if x.ndim == 3:
+        #     x = jnp.expand_dims(x, axis=0)
         print(f"input: {x.shape}")
         # x = self.resnet(x)
         # Convolutional layers
-        x = nn.Conv(features=32, kernel_size=(3, 3), strides=(1, 1))(x)
-        x = nn.LayerNorm()(x)
-        x = nn.relu(x)
+        x = nn.Conv(features=64, kernel_size=(7, 7), strides=(2, 2))(x)
+        # x = nn.LayerNorm()(x)
+        x = nn.leaky_relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
-        x = nn.Conv(features=64, kernel_size=(3, 3), strides=(1, 1))(x)
-        x = nn.LayerNorm()(x)
-        x = nn.relu(x)
+        x = nn.Conv(features=128, kernel_size=(3, 3), strides=(2, 2))(x)
+        # x = nn.LayerNorm()(x)
+        x = nn.leaky_relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
-        x = nn.Conv(features=128, kernel_size=(3, 3), strides=(1, 1))(x)
-        x = nn.LayerNorm()(x)
-        x = nn.relu(x)
+        x = nn.Conv(features=256, kernel_size=(3, 3), strides=(2, 2))(x)
+        # x = nn.LayerNorm()(x)
+        x = nn.leaky_relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
-        x = nn.Conv(features=256, kernel_size=(3, 3), strides=(1, 1))(x)
-        x = nn.LayerNorm()(x)
-        x = nn.relu(x)
+        x = nn.Conv(features=512, kernel_size=(3, 3), strides=(2, 2))(x)
+        # x = nn.LayerNorm()(x)
+        x = nn.leaky_relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
         # Flatten the output from the convolutional layers
@@ -63,8 +63,10 @@ class QNetwork(nn.Module):
 
         print(f"after:{x.shape}")
         x = nn.Dense(512)(x)
+        x = nn.LayerNorm()(x)
         x = nn.leaky_relu(x)
         x = nn.Dense(256)(x)
+        x = nn.LayerNorm()(x)
         x = nn.leaky_relu(x)
         x = nn.Dense(self.action_dim)(x)
         return x
@@ -221,22 +223,22 @@ def make_train(config):
                     learn_batch.first.reward
                     + (1 - learn_batch.first.done) * config["GAMMA"] * q_next_target
                 )
-                """
-                learn_batch = buffer.sample(buffer_state, rng).experience
+                
+                # learn_batch = buffer.sample(buffer_state, rng).experience
 
-                # using online network to evaluate next actions 
-                q_next_online = network.apply(train_state.params, learn_batch.second.obs)
-                next_actions = jnp.argmax(q_next_online, axis=-1)
+                # # using online network to evaluate next actions 
+                # q_next_online = network.apply(train_state.params, learn_batch.second.obs)
+                # next_actions = jnp.mean(q_next_online, axis=-1)
 
-                # using target network to evaluate q values of next states
-                q_next_target = network.apply(train_state.target_network_params, learn_batch.second.obs)
-                q_next_target = jnp.take_along_axis(q_next_target, next_actions[:, None], axis=-1).squeeze(-1)
+                # # using target network to evaluate q values of next states
+                # q_next_target = network.apply(train_state.target_network_params, learn_batch.second.obs)
+                # q_next_target = jnp.take_along_axis(q_next_target, next_actions[:, None], axis=-1).squeeze(-1)
 
-                target = (
-                    learn_batch.first.reward
-                    + (1 - learn_batch.first.done) * config["GAMMA"] * q_next_target
-                )
-                """
+                # target = (
+                #     learn_batch.first.reward
+                #     + (1 - learn_batch.first.done) * config["GAMMA"] * q_next_target
+                # )
+                
                 def _loss_fn(params):
                     q_vals = network.apply(
                         params, learn_batch.first.obs
@@ -247,6 +249,14 @@ def make_train(config):
                         axis=-1,
                     ).squeeze(axis=-1)
                     return jnp.mean((chosen_action_qvals - target) ** 2)
+                    
+                    # use huber loss
+                    # loss = optax.huber_loss(chosen_action_qvals, target)
+                    # return jnp.mean(loss)
+                    
+                    # use l2 loss
+                    # loss = optax.l2_loss(chosen_action_qvals, target)
+                    # return jnp.mean(loss)
 
                 loss, grads = jax.value_and_grad(_loss_fn)(train_state.params)
                 train_state = train_state.apply_gradients(grads=grads)
@@ -327,12 +337,12 @@ def main():
         "NUM_ENVS": 12,
         "BUFFER_SIZE": 10000,
         "BUFFER_BATCH_SIZE": 128,
-        "TOTAL_TIMESTEPS": 1e6,
+        "TOTAL_TIMESTEPS": 2e6, # 2e6*0.7 = 1.4e6
         "EPSILON_START": 1.0,
         "EPSILON_FINISH": 0.05,
-        "EPSILON_ANNEAL_TIME": 25e4,
+        "EPSILON_ANNEAL_TIME": 1.4e6,
         "TARGET_UPDATE_INTERVAL": 500,
-        "LR": 2.5e-4,
+        "LR": 25e-4,
         "LEARNING_STARTS": 10000,
         "TRAINING_INTERVAL": 10,
         "LR_LINEAR_DECAY": False,
