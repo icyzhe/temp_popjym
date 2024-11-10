@@ -16,7 +16,7 @@ from wrappers import LogWrapper
 from typing import Dict
 import popjym
 import flashbax as fbx
-from model.resnet import ResNet18, ResNet34
+from flax import serialization
 import pickle
 import popjym
 import wandb
@@ -33,8 +33,8 @@ class QNetwork(nn.Module):
     
     @nn.compact
     def __call__(self, x: jnp.ndarray):
-        # if x.ndim == 3:
-        #     x = jnp.expand_dims(x, axis=0)
+        if x.ndim == 3:
+            x = x[None, ...]
         print(f"input: {x.shape}")
         # x = self.resnet(x)
         # Convolutional layers
@@ -139,7 +139,7 @@ def make_train(config):
         # resnet18 = ResNet18(n_classes=512)
         network = QNetwork(action_dim=env.action_space(env_params).n)
         rng, _rng = jax.random.split(rng)
-        init_x = jnp.zeros((256,256,3))
+        init_x = jnp.zeros((1, 256, 256, 3))
         network_params = network.init(_rng, init_x)
         # jax.debug.print("network_params: {}", network_params)
         def linear_schedule(count):
@@ -334,21 +334,21 @@ def make_train(config):
 def main():
 
     config = {
-        "NUM_ENVS": 12,
+        "NUM_ENVS": 10,
         "BUFFER_SIZE": 10000,
         "BUFFER_BATCH_SIZE": 128,
-        "TOTAL_TIMESTEPS": 2e6, # 2e6*0.7 = 1.4e6
+        "TOTAL_TIMESTEPS": 1e6,
         "EPSILON_START": 1.0,
         "EPSILON_FINISH": 0.05,
-        "EPSILON_ANNEAL_TIME": 1.4e6,
+        "EPSILON_ANNEAL_TIME": 7e5,
         "TARGET_UPDATE_INTERVAL": 500,
-        "LR": 25e-4,
+        "LR": 1e-4,
         "LEARNING_STARTS": 10000,
         "TRAINING_INTERVAL": 10,
         "LR_LINEAR_DECAY": False,
         "GAMMA": 0.99,
         "TAU": 1.0,
-        "ENV_NAME": "CartPole",
+        "ENV_NAME": "CartPoleHard",
         "ENV_RENDER": "CartPoleRender",
         "SEED": 0,
         "NUM_SEEDS": 1,
@@ -368,23 +368,21 @@ def main():
     rngs = jax.random.split(rng, config["NUM_SEEDS"])
     train_vjit = jax.jit(jax.vmap(make_train(config)))
     outs = jax.block_until_ready(train_vjit(rngs))
+    train_state, _, env_state, obsv, _rng = outs["runner_state"]
 
-    train_state = {"q_network": outs["runner_state"][0].params}
+    state_dict = serialization.to_state_dict(train_state.params)
     with open("./popjym/dqn_flax/train_state.pkl", "wb") as f:
-        pickle.dump(train_state, f)
+        pickle.dump(state_dict, f)
 
 
 
-    # with open("./popjym/dqn_flax/train_state.pkl", "rb") as f:
-    #     trainstate = pickle.load(f)
-    # # print(trainstate)
+
     # def dqn_evaluate(key: jax.random.PRNGKey, model: nn.Module, config: Dict, params):
     #     rng_reset = jax.random.split(key, 2)
-    #     basic_env, env_params = popjym.make(config["ENV_NAME"])
-    #     env = LogWrapper(basic_env)
+    #     env, env_params = popjym.make(config["ENV_NAME"])
     #     obs, env_state = jax.vmap(env.reset, in_axes=(0, None))(rng_reset, env_params)
     #     env_render = popjym.make_render(config["ENV_RENDER"])
-    #     obs = jax.vmap(env_render.render)(env_state.env_state)
+    #     obs = jax.vmap(env_render.render)(env_state)
     #     plt.axis('off')
     #     plt.imshow(obs[0])
     #     plt.show()
@@ -397,19 +395,25 @@ def main():
     #         rng_step = jax.random.split(rng, 2)
     #         obs2, new_state, reward, term, _ = jax.vmap(env.step, in_axes=(0, 0, 0, None))(rng_step, env_state, action, env_params)
     #         env_state = new_state
-    #         obs = jax.vmap(env_render.render)(new_state.env_state)
+    #         obs = jax.vmap(env_render.render)(new_state)
     #         plt.axis('off')
     #         plt.imshow(obs[0])
     #         plt.show()
 
 
-    # network = QNetwork(action_dim=5)
+    # Eva_network = QNetwork(action_dim=5)
     # _rng = jax.random.PRNGKey(0)
-    # init_x = jnp.zeros((256,256,3))
-    # network_params = network.init(_rng, init_x)
-    # network_params = trainstate["q_network"]
 
-    # dqn_evaluate(jax.random.PRNGKey(0), network, config, network_params)
+    # with open("./popjym/dqn_flax/train_state.pkl", "rb") as f:
+    #     state_dict = pickle.load(f)
+    # params = serialization.from_state_dict(Eva_network, state_dict)
+
+    # # init_x = jnp.zeros((2, 256,256,3))
+    # # network_params = Eva_network.init(_rng, init_x)
+    
+    # # q_vals = Eva_network.apply(params, jnp.zeros((2, 256,256,3)))
+    # # print(q_vals)
+    # dqn_evaluate(jax.random.PRNGKey(0), Eva_network, config, params)
 
 
 if __name__ == "__main__":
