@@ -34,34 +34,22 @@ class QNetwork(nn.Module):
     
     @nn.compact
     def __call__(self, x: jnp.ndarray):
-        if x.ndim == 3:
-            x = x[None, ...]
+        # if x.ndim == 3:
+        #     x = x[None, ...]
         print(f"input: {x.shape}")
-        # x = self.resnet(x)
-        # Convolutional layers
-        x = nn.Conv(features=64, kernel_size=(7, 7), strides=(2, 2))(x)
-        # x = nn.LayerNorm()(x)
+        x = nn.Conv(32, 3, 2)(x)
         x = nn.leaky_relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
-        x = nn.Conv(features=128, kernel_size=(3, 3), strides=(2, 2))(x)
-        # x = nn.LayerNorm()(x)
+        x = nn.Conv(64, 3, 2)(x)
         x = nn.leaky_relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
 
-        x = nn.Conv(features=256, kernel_size=(3, 3), strides=(2, 2))(x)
-        # x = nn.LayerNorm()(x)
+        x = nn.Conv(128, 3, 2)(x)
         x = nn.leaky_relu(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
-
-        x = nn.Conv(features=512, kernel_size=(3, 3), strides=(2, 2))(x)
-        # x = nn.LayerNorm()(x)
-        x = nn.leaky_relu(x)
-        x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
-
-        # Flatten the output from the convolutional layers
         x = x.reshape((x.shape[0], -1))
-
+        x = nn.Dense(512)(x)
         print(f"after:{x.shape}")
         x = nn.Dense(512)(x)
         x = nn.LayerNorm()(x)
@@ -335,12 +323,12 @@ def make_train(config):
 def main():
 
     config = {
-        "NUM_ENVS": 10,
+        "NUM_ENVS": 12,
         "BUFFER_SIZE": 10000,
         "BUFFER_BATCH_SIZE": 128,
-        "TOTAL_TIMESTEPS": 1e6,
+        "TOTAL_TIMESTEPS": 2e6,
         "EPSILON_START": 1.0,
-        "EPSILON_FINISH": 0.05,
+        "EPSILON_FINISH": 0.01,
         "EPSILON_ANNEAL_TIME": 5e5,
         "TARGET_UPDATE_INTERVAL": 500,
         "LR": 2.5e-4,
