@@ -20,6 +20,7 @@ from flax import serialization
 import pickle
 import popjym
 import wandb
+import time
 
 from matplotlib import pyplot as plt
 
@@ -340,9 +341,9 @@ def main():
         "TOTAL_TIMESTEPS": 1e6,
         "EPSILON_START": 1.0,
         "EPSILON_FINISH": 0.05,
-        "EPSILON_ANNEAL_TIME": 7e5,
+        "EPSILON_ANNEAL_TIME": 5e5,
         "TARGET_UPDATE_INTERVAL": 500,
-        "LR": 1e-4,
+        "LR": 2.5e-4,
         "LEARNING_STARTS": 10000,
         "TRAINING_INTERVAL": 10,
         "LR_LINEAR_DECAY": False,
@@ -364,12 +365,13 @@ def main():
         config=config,
         mode=config["WANDB_MODE"],
     )
+    start = time.time()
     rng = jax.random.PRNGKey(config["SEED"])
     rngs = jax.random.split(rng, config["NUM_SEEDS"])
     train_vjit = jax.jit(jax.vmap(make_train(config)))
     outs = jax.block_until_ready(train_vjit(rngs))
     train_state, _, env_state, obsv, _rng = outs["runner_state"]
-
+    print(f"Time taken: {time.time() - start}")
     state_dict = serialization.to_state_dict(train_state.params)
     with open("./popjym/dqn_flax/train_state.pkl", "wb") as f:
         pickle.dump(state_dict, f)
