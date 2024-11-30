@@ -7,12 +7,13 @@ import equinox as eqx
 from equinox import nn
 import popjym
 from popjym.wrappers import LogWrapper
-import wandb
+
 
 def debug_shape(x):
     jax.tree.map(
         lambda x: print(x.shape) if hasattr(x, "shape") else x, x
     )
+
 
 class QNetwork(eqx.Module):
     """CNN + MLP"""
@@ -114,7 +115,7 @@ class RolloutState(State):
     wrapped_env: Any
     env_state: jax.Array
     actor: BoltzmannActor
-    visualizer: Any
+    # visualizer: Any
     obs: jax.Array
     temperature: jax.Array
 
@@ -138,11 +139,13 @@ def scan_env(rollout_state: RolloutState, num_steps: int, key: jax.random.PRNGKe
         key, action_key, env_key = jax.random.split(key, 3)
         actor = eqx.combine(static, params)
         # gymnax will automatically reset done envs
-        obs = rollout_state.visualizer.render(env_state)
+        # obs = rollout_state.visualizer.render(env_state)
         action = actor(obs, rollout_state.temperature, action_key)
+        # jax.debug.print("envstate{}", env_state)
+        # jax.debug.print("action{}", action)
         next_obs, next_env_state, reward, done, info = rollout_state.env.step(env_key, env_state, action)
-        next_obs = rollout_state.visualizer.render(next_env_state)
-
+        # next_obs = rollout_state.visualizer.render(next_env_state)
+        # jax.debug.print("reward{}", reward)
         transition = Transition(obs=obs, action=action, reward=reward, next_obs=next_obs, done=done, info=info)
 
         return (next_obs, next_env_state, key), transition
@@ -157,7 +160,7 @@ def scan_env(rollout_state: RolloutState, num_steps: int, key: jax.random.PRNGKe
 
 def update(rollout_state, train_state, num_steps, key):
     """Performs a rollout and one update of the model"""
-    num_envs = rollout_state.obs.shape[0]
+    num_envs = rollout_state.obs.shape[0] 
     # Collect train data
     rollout_keys = jax.random.split(key, num_envs)
     rollout_state, transition = eqx.filter_vmap(
@@ -165,7 +168,7 @@ def update(rollout_state, train_state, num_steps, key):
         in_axes=(
             # You can vmap/jax/jit across dataclasses/state
             # Just construct a new dataclass/state with in_axes like so
-            RolloutState(env=None, wrapped_env=None, env_state=0, actor=None, visualizer=None, obs=0, temperature=0),
+            RolloutState(env=None, wrapped_env=None, env_state=0, actor=None, obs=0, temperature=0),
             None, 0
         )
     )(rollout_state, num_steps, rollout_keys)
@@ -179,7 +182,7 @@ def update(rollout_state, train_state, num_steps, key):
         target = jax.lax.stop_gradient(transition.reward + (1 - transition.done) * train_state.gamma * next_q)
         q_vals = jnp.take(vmodel(transition.obs), transition.action)
         loss = jnp.mean(jnp.square(q_vals - target))
-        return loss, {"loss": loss, "mean_q": jnp.mean(q_vals), "return": jnp.mean(transition.reward)}
+        return loss, {"loss": loss, "mean_q": jnp.mean(q_vals), "return": jnp.mean(transition.info["returned_episode_returns"])}
 
     grad, metrics = eqx.filter_grad(loss_fn, has_aux=True)(train_state.model)
     train_state = train_state.update_model(grad)
@@ -189,21 +192,36 @@ def update(rollout_state, train_state, num_steps, key):
 
     return rollout_state, train_state, metrics
 
+
+
+
 # Hyperparameters
-num_envs = 16
-train_epochs = 500
-rollout_steps = 16
+num_envs = 4
+train_epochs = 500000
+rollout_steps = 64
 gamma = 0.99
 temp = jnp.linspace(0.01, 1.00, num_envs)
-lr = 1e-4
+lr = 2.5e-4
 key = jax.random.key(0)
-basic_env, env_params = popjym.make("CartPoleEasy")
+env_name = "CartPoleEasy"
+config = {
+    "NUM_ENVS": num_envs,
+    "TRAIN_EPOCHS": train_epochs,
+    "ROLLOUT_STEPS": rollout_steps,
+    "GAMMA": gamma,
+    "TEMPERATURE": temp[0],
+    "LEARNING_RATE": lr,
+    "PROJECT": "popjym-acrade-test-pqn",
+    "WANDB_MODE": "online",
+    "ENV_NAME": env_name,
+}
+basic_env, env_params = popjym.make(config["ENV_NAME"])
+# visualizer = popjym.make_render("CartPoleRender")
 env = LogWrapper(basic_env)
-visualizer = popjym.make_render("CartPoleRender")
 
 # Setup
-env_params, init_state = jax.vmap(env.reset)(jax.random.split(key, num_envs))
-init_obs = jax.vmap(visualizer.render)(init_state)
+init_obs, init_state = jax.vmap(env.reset)(jax.random.split(key, num_envs))
+# init_obs = jax.vmap(visualizer.render)(init_state)
 model = QNetwork(action_dim=env.action_space().n, key=key)
 actor = BoltzmannActor(model=model)
 opt = optax.adamw(lr)
@@ -214,7 +232,7 @@ rstate = RolloutState(
     env_state = init_state,
     wrapped_env = LogWrapper(env),
     actor = actor,
-    visualizer = visualizer,
+    # visualizer = visualizer,
     obs = init_obs,
     temperature = temp,
 )
@@ -224,23 +242,15 @@ tstate = TrainState(
     opt_state = opt_state,
     gamma = jnp.array(gamma)
 )
-config = {
-    "NUM_ENVS": num_envs,
-    "TRAIN_EPOCHS": train_epochs,
-    "ROLLOUT_STEPS": rollout_steps,
-    "GAMMA": gamma,
-    "TEMPERATURE": temp[0],
-    "LEARNING_RATE": lr,
-    "PROJECT": "popjym-acrade-test2",
-    "WANDB_MODE": "online",
-    "ENV_NAME": "CartPoleEasy",
-    
-}
+
+import wandb
+
+
 for epoch in range(train_epochs):
     wandb.init(
         project=config["PROJECT"],
         tags=["PQN", config["ENV_NAME"].upper(), f"jax_{jax.__version__}"],
-        name=f'pqn_{config["ENV_NAME"]}',
+        name=f'popjym_{config["ENV_NAME"]}',
         config=config,
         mode=config["WANDB_MODE"],
     )
@@ -248,9 +258,9 @@ for epoch in range(train_epochs):
     rstate, tstate, metrics = eqx.filter_jit(update)(rstate, tstate, num_steps=rollout_steps, key=subkey)
     metrics_str = ", ".join([f"{k}: {v:.3f}" for k, v in metrics.items()])
     print(f"Epoch {epoch}: {metrics_str}")
-
+    # add epoch to metrics
+    metrics["epoch"] = epoch
     def callback(metrics):
         if epoch % 100 == 0:
             wandb.log(metrics)
-
     jax.debug.callback(callback, metrics)
