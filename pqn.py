@@ -67,7 +67,7 @@ class QNetwork(nn.Module):
         x = nn.Conv(512, 3, 2)(x)
         x = activation(x)
         x = nn.max_pool(x, window_shape=(2, 2), strides=(2, 2))
-        # print(f"after CNN x.shape: {x.shape}" )
+        print(f"after CNN x.shape: {x.shape}" )
         x = x.reshape((x.shape[0], -1))
 
         x = nn.Dense(self.hidden_size)(x)
@@ -120,7 +120,7 @@ def make_train(config):
     config["TEST_NUM_STEPS"] = config.get(
         "TEST_NUM_STEPS", env_params.max_steps_in_episode
     )
-
+    jax.debug.print("env_params.max_steps_in_episode {}", env_params.max_steps_in_episode)
     vmap_reset = lambda n_envs: lambda rng: jax.vmap(env.reset, in_axes=(0, None))(
         jax.random.split(rng, n_envs), env_params
     )
@@ -568,8 +568,8 @@ if __name__ == "__main__":
         "ENTITY": "",
         "PROJECT": "flax_pqn",
         "ALG_NAME": "pqn",
-        "TOTAL_TIMESTEPS": 1e6,
-        "TOTAL_TIMESTEPS_DECAY": 1e6, # will be used for decay functions, in case you want to test for less timesteps and keep decays same
+        "TOTAL_TIMESTEPS": 1500000,
+        "TOTAL_TIMESTEPS_DECAY": 1500000, # will be used for decay functions, in case you want to test for less timesteps and keep decays same
         "NUM_ENVS": 32, # parallel environments
         "NUM_STEPS": 64, # steps per environment in each update
         "EPS_START": 1,
