@@ -1,0 +1,29 @@
+def evaluate(model):
+    seed = jax.random.PRNGKey(10)
+    seed, _rng = jax.random.split(seed)
+    env, env_params = popjym.make(config["ENV_NAME"])
+    env = LogWrapper(env)
+    vmap_reset = lambda n_envs: lambda rng: jax.vmap(env.reset, in_axes=(0, None))(
+        jax.random.split(rng, n_envs), env_params
+    )
+    vmap_step = lambda n_envs: lambda rng, env_state, action: jax.vmap(
+        env.step, in_axes=(0, 0, 0, None)
+    )(jax.random.split(rng, n_envs), env_state, action, env_params)
+    
+    obs, state = vmap_reset(2)(_rng)
+
+    wandb.init()
+    frames = []
+    for i in range(500):
+        rng, rng_act, rng_step, _rng = jax.random.split(_rng, 4)
+        q_val = model(obs)
+        action = jnp.argmax(q_val, axis=-1)
+        obs, new_state, reward, term, _ = vmap_step(2)(rng_step, state, action)
+        state = new_state
+        frame = np.asarray(obs[0])
+        frame = (frame * 255).astype(np.uint8)
+        frames.append(frame)
+    frames = np.array(frames, dtype=np.uint8)
+    frames = frames.transpose((0, 3, 1, 2))
+    print(frames.shape)
+    wandb.log({"Video": wandb.Video(frames, fps=4)})
