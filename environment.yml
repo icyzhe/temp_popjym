@@ -1,4 +1,4 @@
-name: Jaxenv
+name: jaxenv
 channels:
   - conda-forge
   - defaults
@@ -136,4 +136,3 @@ dependencies:
       - tzdata==2024.2
       - urllib3==2.2.3
       - wandb==0.18.7
-prefix: /home/ubuntu-user/anaconda3/envs/Jaxenv
